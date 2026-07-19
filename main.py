@@ -1,6 +1,20 @@
-def main():
-    print("Hello from agentic-rag-research-pipeline!")
+from fastapi import FastAPI
+
+
+app = FastAPI(title="Agentic RAG Research Pipeline")
+
+
+@app.get("/")
+async def hello_world() -> dict[str, str]:
+    return {"message": "hello world"}
+
+
+@app.get("/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
 
 
 if __name__ == "__main__":
-    main()
+    import uvicorn
+
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
