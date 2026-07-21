@@ -1,8 +1,13 @@
 # agentic-rag-research-pipeline
 
-## Basic LangGraph Agent (single node)
+## Overview
 
-This project now includes a minimal LangGraph setup that is easy to expand into a multi-agent system.
+This project contains:
+
+- a minimal single-node LangGraph agent
+- a document ingestion endpoint that chunks and embeds uploads into ChromaDB
+
+## LangGraph agent
 
 - Graph entry point: `agent_graph` in `agents/graph.py`
 - Node: `agent_node` in `agents/graph.py`
@@ -23,11 +28,24 @@ Optional model override:
 set OPENAI_MODEL=gpt-5-nano
 ```
 
-### Run the API
+## Document ingestion service
+
+The ingestion endpoint:
+
+- accepts only `.txt`, `.md`, `.pdf`
+- stores original files in `data/documents`
+- chunks text with `chunk_size=1000`, `chunk_overlap=200`
+- embeds chunks with `text-embedding-3-small`
+- upserts vectors into ChromaDB at `data/chroma`, collection `research_documents`
+- blocks duplicate uploads using SHA-256 checksum (returns HTTP 409)
+
+## Run the API
 
 ```bash
 uv run uvicorn main:app --reload
 ```
+
+## API endpoints
 
 ### Invoke the agent
 
@@ -41,6 +59,32 @@ Expected response shape:
 
 ```json
 {"response":"<model output text>"}
+```
+
+### Ingest a document
+
+```bash
+curl -X POST "http://127.0.0.1:8000/documents/ingest" ^
+	-H "accept: application/json" ^
+	-F "file=@C:\\path\\to\\document.pdf"
+```
+
+Expected response shape:
+
+```json
+{
+	"document_id": "<uuid>",
+	"filename": "document.pdf",
+	"stored_path": "<absolute path to saved file>",
+	"chunks_ingested": 8,
+	"collection_name": "research_documents"
+}
+```
+
+Duplicate response example:
+
+```json
+{"detail":"Duplicate document already ingested."}
 ```
 
 ## Pre-commit hook (Ruff)
