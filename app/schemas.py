@@ -15,3 +15,10 @@ class IngestDocumentResponse(BaseModel):
     stored_path: str
     chunks_ingested: int
     collection_name: str
+
+
+class DeleteDocumentResponse(BaseModel):
+    document_id: str
+    file_deleted: bool
+    embeddings_deleted: int
+    collection_name: str

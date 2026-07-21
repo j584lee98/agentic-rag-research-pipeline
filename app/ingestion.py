@@ -160,3 +160,38 @@ def ingest_upload(upload: UploadFile) -> dict[str, str | int]:
         "chunks_ingested": len(chunks),
         "collection_name": CHROMA_COLLECTION_NAME,
     }
+
+
+def delete_document(document_id: str) -> dict[str, str | int | bool]:
+    if not document_id.strip():
+        raise HTTPException(status_code=400, detail="document_id is required.")
+
+    CHROMA_PERSIST_DIR.mkdir(parents=True, exist_ok=True)
+    client = chromadb.PersistentClient(path=str(CHROMA_PERSIST_DIR))
+    collection = client.get_or_create_collection(name=CHROMA_COLLECTION_NAME)
+
+    existing = collection.get(where={"document_id": document_id}, include=["metadatas"])
+    ids = existing.get("ids", [])
+    if not ids:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    metadatas = existing.get("metadatas", [])
+    stored_path_value = ""
+    if metadatas and metadatas[0]:
+        stored_path_value = str(metadatas[0].get("stored_path", ""))
+
+    collection.delete(where={"document_id": document_id})
+
+    file_deleted = False
+    if stored_path_value:
+        stored_path = Path(stored_path_value)
+        if stored_path.exists() and stored_path.is_file():
+            stored_path.unlink()
+            file_deleted = True
+
+    return {
+        "document_id": document_id,
+        "file_deleted": file_deleted,
+        "embeddings_deleted": len(ids),
+        "collection_name": CHROMA_COLLECTION_NAME,
+    }

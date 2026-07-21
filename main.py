@@ -1,8 +1,13 @@
 from fastapi import FastAPI, File, UploadFile
 
 from agents.graph import invoke_agent
-from app.ingestion import ingest_upload
-from app.schemas import IngestDocumentResponse, InvokeRequest, InvokeResponse
+from app.ingestion import delete_document, ingest_upload
+from app.schemas import (
+    DeleteDocumentResponse,
+    IngestDocumentResponse,
+    InvokeRequest,
+    InvokeResponse,
+)
 
 
 app = FastAPI(title="Agentic RAG Research Pipeline")
@@ -27,6 +32,12 @@ async def invoke(request: InvokeRequest) -> InvokeResponse:
 async def ingest_document(file: UploadFile = File(...)) -> IngestDocumentResponse:
     result = ingest_upload(file)
     return IngestDocumentResponse(**result)
+
+
+@app.delete("/documents/{document_id}", response_model=DeleteDocumentResponse)
+async def remove_document(document_id: str) -> DeleteDocumentResponse:
+    result = delete_document(document_id)
+    return DeleteDocumentResponse(**result)
 
 
 if __name__ == "__main__":

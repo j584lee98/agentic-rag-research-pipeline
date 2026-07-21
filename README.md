@@ -87,6 +87,25 @@ Duplicate response example:
 {"detail":"Duplicate document already ingested."}
 ```
 
+### Delete a document
+
+Deletes all chunk embeddings in ChromaDB for the document and removes the stored source file.
+
+```bash
+curl -X DELETE "http://127.0.0.1:8000/documents/<document_id>"
+```
+
+Expected response shape:
+
+```json
+{
+	"document_id": "<document_id>",
+	"file_deleted": true,
+	"embeddings_deleted": 8,
+	"collection_name": "research_documents"
+}
+```
+
 ## Pre-commit hook (Ruff)
 
 This repo uses `pre-commit` to run Ruff automatically before each commit.
