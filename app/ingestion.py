@@ -84,6 +84,11 @@ def _build_checksum(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+def _delete_file_if_exists(path: Path) -> None:
+    if path.exists() and path.is_file():
+        path.unlink()
+
+
 def ingest_upload(upload: UploadFile) -> dict[str, str | int]:
     if not upload.filename:
         raise HTTPException(status_code=400, detail="A filename is required.")
@@ -113,8 +118,6 @@ def ingest_upload(upload: UploadFile) -> dict[str, str | int]:
             status_code=400, detail="No extractable text found in document."
         )
 
-    document_id, stored_path = _save_uploaded_file(upload.filename, extension, raw)
-
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,
         chunk_overlap=CHUNK_OVERLAP,
@@ -125,34 +128,37 @@ def ingest_upload(upload: UploadFile) -> dict[str, str | int]:
             status_code=400, detail="No text chunks generated from document."
         )
 
+    document_id, stored_path = _save_uploaded_file(upload.filename, extension, raw)
+
     embeddings_client = OpenAIEmbeddings(model=OPENAI_EMBEDDING_MODEL)
 
     try:
         embeddings = embeddings_client.embed_documents(chunks)
+        ids = [f"{document_id}-{idx}" for idx, _ in enumerate(chunks)]
+        metadatas = [
+            {
+                "document_id": document_id,
+                "filename": upload.filename,
+                "stored_path": str(stored_path),
+                "chunk_index": idx,
+                "chunk_count": len(chunks),
+                "checksum": checksum,
+            }
+            for idx, _ in enumerate(chunks)
+        ]
+
+        collection.upsert(
+            ids=ids,
+            documents=chunks,
+            embeddings=embeddings,
+            metadatas=metadatas,
+        )
     except Exception as exc:
+        _delete_file_if_exists(stored_path)
         raise HTTPException(
-            status_code=500, detail=f"Embedding generation failed: {exc}"
+            status_code=500,
+            detail=f"Failed to persist document embeddings: {exc}",
         ) from exc
-
-    ids = [f"{document_id}-{idx}" for idx, _ in enumerate(chunks)]
-    metadatas = [
-        {
-            "document_id": document_id,
-            "filename": upload.filename,
-            "stored_path": str(stored_path),
-            "chunk_index": idx,
-            "chunk_count": len(chunks),
-            "checksum": checksum,
-        }
-        for idx, _ in enumerate(chunks)
-    ]
-
-    collection.upsert(
-        ids=ids,
-        documents=chunks,
-        embeddings=embeddings,
-        metadatas=metadatas,
-    )
 
     return {
         "document_id": document_id,
