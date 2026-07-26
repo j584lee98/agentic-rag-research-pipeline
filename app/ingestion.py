@@ -4,13 +4,14 @@ from io import BytesIO
 from pathlib import Path
 
 import chromadb
-from dotenv import load_dotenv
 from fastapi import HTTPException, UploadFile
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pypdf import PdfReader
 
-load_dotenv()
+from app.config import get_settings
+
+SETTINGS = get_settings()
 
 SUPPORTED_EXTENSIONS = {
     ".txt",
@@ -18,12 +19,12 @@ SUPPORTED_EXTENSIONS = {
     ".pdf",
 }
 
-DOCUMENTS_DIR = Path("data/documents").resolve()
-CHROMA_PERSIST_DIR = Path("data/chroma").resolve()
-CHROMA_COLLECTION_NAME = "research_documents"
-OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
-CHUNK_SIZE = 1000
-CHUNK_OVERLAP = 200
+DOCUMENTS_DIR = SETTINGS.documents_dir
+CHROMA_PERSIST_DIR = SETTINGS.chroma_persist_dir
+CHROMA_COLLECTION_NAME = SETTINGS.chroma_collection_name
+OPENAI_EMBEDDING_MODEL = SETTINGS.openai_embedding_model
+CHUNK_SIZE = SETTINGS.chunk_size
+CHUNK_OVERLAP = SETTINGS.chunk_overlap
 
 
 def _decode_text_bytes(raw: bytes) -> str:
