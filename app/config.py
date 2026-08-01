@@ -19,9 +19,18 @@ class Settings:
     chunk_overlap: int
 
 
+def _validate_chunking(chunk_size: int, chunk_overlap: int) -> None:
+    if chunk_size <= 0:
+        raise ValueError("CHUNK_SIZE must be greater than 0.")
+    if chunk_overlap < 0:
+        raise ValueError("CHUNK_OVERLAP must be greater than or equal to 0.")
+    if chunk_overlap >= chunk_size:
+        raise ValueError("CHUNK_OVERLAP must be smaller than CHUNK_SIZE.")
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    return Settings(
+    settings = Settings(
         openai_model=os.getenv("OPENAI_MODEL", "gpt-5-nano"),
         openai_embedding_model=os.getenv(
             "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
@@ -36,3 +45,6 @@ def get_settings() -> Settings:
         chunk_size=int(os.getenv("CHUNK_SIZE", "1000")),
         chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "200")),
     )
+
+    _validate_chunking(settings.chunk_size, settings.chunk_overlap)
+    return settings

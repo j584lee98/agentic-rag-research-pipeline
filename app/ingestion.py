@@ -1,4 +1,5 @@
 import hashlib
+import re
 import uuid
 from io import BytesIO
 from pathlib import Path
@@ -18,6 +19,8 @@ SUPPORTED_EXTENSIONS = {
     ".md",
     ".pdf",
 }
+
+_SAFE_FILENAME_PATTERN = re.compile(r"[^A-Za-z0-9._-]+")
 
 DOCUMENTS_DIR = SETTINGS.documents_dir
 CHROMA_PERSIST_DIR = SETTINGS.chroma_persist_dir
@@ -68,11 +71,17 @@ def _ensure_supported_file(filename: str) -> str:
     return extension
 
 
+def _sanitize_filename(filename: str) -> str:
+    stem = Path(filename).stem
+    safe_name = _SAFE_FILENAME_PATTERN.sub("_", stem).strip("._-")
+    return safe_name or "document"
+
+
 def _save_uploaded_file(filename: str, extension: str, raw: bytes) -> tuple[str, Path]:
     document_id = uuid.uuid4().hex
     DOCUMENTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    safe_name = Path(filename).stem.replace(" ", "_")
+    safe_name = _sanitize_filename(filename)
     stored_filename = f"{safe_name}_{document_id}{extension}"
     destination = DOCUMENTS_DIR / stored_filename
     destination.write_bytes(raw)
@@ -89,6 +98,12 @@ def _delete_file_if_exists(path: Path) -> None:
         path.unlink()
 
 
+def _get_collection():
+    CHROMA_PERSIST_DIR.mkdir(parents=True, exist_ok=True)
+    client = chromadb.PersistentClient(path=str(CHROMA_PERSIST_DIR))
+    return client.get_or_create_collection(name=CHROMA_COLLECTION_NAME)
+
+
 def ingest_upload(upload: UploadFile) -> dict[str, str | int]:
     if not upload.filename:
         raise HTTPException(status_code=400, detail="A filename is required.")
@@ -100,9 +115,7 @@ def ingest_upload(upload: UploadFile) -> dict[str, str | int]:
 
     checksum = _build_checksum(raw)
 
-    CHROMA_PERSIST_DIR.mkdir(parents=True, exist_ok=True)
-    client = chromadb.PersistentClient(path=str(CHROMA_PERSIST_DIR))
-    collection = client.get_or_create_collection(name=CHROMA_COLLECTION_NAME)
+    collection = _get_collection()
 
     existing = collection.get(
         where={"checksum": checksum}, include=["metadatas"], limit=1
@@ -173,9 +186,7 @@ def delete_document(document_id: str) -> dict[str, str | int | bool]:
     if not document_id.strip():
         raise HTTPException(status_code=400, detail="document_id is required.")
 
-    CHROMA_PERSIST_DIR.mkdir(parents=True, exist_ok=True)
-    client = chromadb.PersistentClient(path=str(CHROMA_PERSIST_DIR))
-    collection = client.get_or_create_collection(name=CHROMA_COLLECTION_NAME)
+    collection = _get_collection()
 
     existing = collection.get(where={"document_id": document_id}, include=["metadatas"])
     ids = existing.get("ids", [])
