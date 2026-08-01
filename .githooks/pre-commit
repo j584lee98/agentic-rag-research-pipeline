@@ -1,0 +1,25 @@
+#!/usr/bin/env sh
+set -eu
+
+staged_python_files="$(git diff --cached --name-only --diff-filter=ACMR -- '*.py' '*.pyi')"
+
+if [ -z "$staged_python_files" ]; then
+  exit 0
+fi
+
+set --
+while IFS= read -r file; do
+  [ -n "$file" ] && set -- "$@" "$file"
+done <<EOF
+$staged_python_files
+EOF
+
+echo "Running Ruff format and fix on staged Python files..."
+
+uv run ruff format "$@"
+uv run ruff check --fix "$@"
+
+git add -- "$@"
+
+echo "Running final Ruff check on staged Python files..."
+uv run ruff check "$@"

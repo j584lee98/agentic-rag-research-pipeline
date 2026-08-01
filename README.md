@@ -106,19 +106,28 @@ Expected response shape:
 }
 ```
 
-## Pre-commit hook (Ruff)
+## Pre-commit hook (Ruff, single-commit flow)
 
-This repo uses `pre-commit` to run Ruff automatically before each commit.
+This repo uses a Git pre-commit hook that:
+
+- runs `ruff format` on staged Python files
+- runs `ruff check --fix` on staged Python files
+- re-stages changed files automatically
+- runs a final `ruff check`
+
+This allows a single `git commit` command to succeed after formatting/fixes, without re-running commit manually.
 
 ### One-time setup
 
 ```bash
 uv sync --group dev
-uv run pre-commit install
+git config core.hooksPath .githooks
 ```
 
 ### Run manually (optional)
 
 ```bash
-uv run pre-commit run --all-files
+uv run ruff format .
+uv run ruff check --fix .
+uv run ruff check .
 ```
