@@ -1,4 +1,9 @@
+import logging
+from pathlib import Path
+
 from fastapi import FastAPI, File, UploadFile
+
+from agents.graph import agent_graph
 
 from app.schemas import (
     DeleteDocumentResponse,
@@ -9,10 +14,25 @@ from app.schemas import (
 from app.services import AgentService, DocumentService
 
 
+logger = logging.getLogger(__name__)
+
+
 app = FastAPI(title="Agentic RAG Research Pipeline")
 
 agent_service = AgentService()
 document_service = DocumentService()
+
+
+@app.on_event("startup")
+async def generate_graph_diagram() -> None:
+    output_path = Path(__file__).resolve().parent / "flow.png"
+
+    try:
+        graph_png = agent_graph.get_graph().draw_mermaid_png()
+        output_path.write_bytes(graph_png)
+        logger.info("Saved LangGraph flow diagram to %s", output_path)
+    except Exception:
+        logger.exception("Failed to generate LangGraph flow diagram.")
 
 
 @app.get("/")
