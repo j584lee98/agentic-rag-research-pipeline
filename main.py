@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 
 from fastapi import FastAPI, File, UploadFile
+from langchain_core.runnables.graph_mermaid import draw_mermaid_png
 
 from agents.graph import agent_graph
 
@@ -28,7 +29,9 @@ async def generate_graph_diagram() -> None:
     output_path = Path(__file__).resolve().parent / "flow.png"
 
     try:
-        graph_png = agent_graph.get_graph().draw_mermaid_png()
+        mermaid_syntax = agent_graph.get_graph().draw_mermaid()
+        lr_mermaid_syntax = mermaid_syntax.replace("graph TD;", "graph LR;", 1)
+        graph_png = draw_mermaid_png(lr_mermaid_syntax)
         output_path.write_bytes(graph_png)
         logger.info("Saved LangGraph flow diagram to %s", output_path)
     except Exception:

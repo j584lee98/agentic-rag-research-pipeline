@@ -18,11 +18,12 @@ logger = logging.getLogger(__name__)
 class AgentState(TypedDict):
     prompt: str
     response: str
-    route: NotRequired[Literal["simple", "complex"]]
+    route: NotRequired[Literal["direct", "deep"]]
+    context: NotRequired[str]
 
 
 class RouteDecision(BaseModel):
-    route: Literal["simple", "complex"]
+    route: Literal["direct", "deep"]
 
 
 @dataclass(frozen=True)
@@ -100,17 +101,16 @@ def _retrieve_context(prompt: str, embedding_model: str, top_k: int = 4) -> str:
     return _format_retrieved_context(documents, metadatas)
 
 
-def make_agent_node(runtime: AgentRuntime):
-    def agent_node(state: AgentState) -> AgentState:
+def make_retrieval_node(runtime: AgentRuntime):
+    def retrieval_node(state: AgentState) -> AgentState:
         prompt = state["prompt"].strip()
         if not prompt:
             return {
                 "prompt": "",
                 "response": "Please provide a prompt.",
-                "route": state.get("route", "complex"),
+                "route": state.get("route", "deep"),
+                "context": "",
             }
-
-        llm = runtime.llm_factory(runtime.model_name)
 
         try:
             context = _retrieve_context(prompt, runtime.embedding_model)
@@ -119,6 +119,32 @@ def make_agent_node(runtime: AgentRuntime):
                 "Context retrieval failed. Continuing with an empty context."
             )
             context = "No relevant context was retrieved from the knowledge base."
+
+        return {
+            "prompt": prompt,
+            "response": state.get("response", ""),
+            "route": state.get("route", "deep"),
+            "context": context,
+        }
+
+    return retrieval_node
+
+
+def make_deep_node(runtime: AgentRuntime):
+    def deep_node(state: AgentState) -> AgentState:
+        prompt = state["prompt"].strip()
+        if not prompt:
+            return {
+                "prompt": "",
+                "response": "Please provide a prompt.",
+                "route": state.get("route", "deep"),
+                "context": state.get("context", ""),
+            }
+
+        llm = runtime.llm_factory(runtime.model_name)
+        context = state.get(
+            "context", "No relevant context was retrieved from the knowledge base."
+        )
 
         rag_prompt = ChatPromptTemplate.from_messages(
             [
@@ -147,11 +173,12 @@ def make_agent_node(runtime: AgentRuntime):
         try:
             model_response = chain.invoke({"question": prompt, "context": context})
         except Exception:
-            logger.exception("Model invocation failed.")
+            logger.exception("Deep model invocation failed.")
             return {
                 "prompt": prompt,
                 "response": "Model invocation failed. Please try again.",
-                "route": state.get("route", "complex"),
+                "route": state.get("route", "deep"),
+                "context": context,
             }
 
         response_text = str(model_response.content)
@@ -159,10 +186,11 @@ def make_agent_node(runtime: AgentRuntime):
         return {
             "prompt": prompt,
             "response": response_text,
-            "route": state.get("route", "complex"),
+            "route": state.get("route", "deep"),
+            "context": context,
         }
 
-    return agent_node
+    return deep_node
 
 
 def make_router_node(runtime: AgentRuntime):
@@ -172,7 +200,7 @@ def make_router_node(runtime: AgentRuntime):
             return {
                 "prompt": "",
                 "response": "Please provide a prompt.",
-                "route": "simple",
+                "route": "direct",
             }
 
         llm = runtime.llm_factory(runtime.model_name)
@@ -180,8 +208,8 @@ def make_router_node(runtime: AgentRuntime):
 
         routing_prompt = (
             "You are a query complexity router. Classify the user prompt as either "
-            "'simple' or 'complex'. Return 'simple' for direct Q&A requests that can "
-            "be answered in one straightforward response. Return 'complex' if the "
+            "'direct' or 'deep'. Return 'direct' for direct Q&A requests that can "
+            "be answered in one straightforward response. Return 'deep' if the "
             "request requires multi-step reasoning, planning, tool use, or iterative "
             "processing.\n\n"
             f"User prompt:\n{prompt}"
@@ -191,10 +219,8 @@ def make_router_node(runtime: AgentRuntime):
             decision = router_llm.invoke(routing_prompt)
             route = decision.route
         except Exception:
-            logger.exception(
-                "Routing model invocation failed. Falling back to complex."
-            )
-            route = "complex"
+            logger.exception("Routing model invocation failed. Falling back to deep.")
+            route = "deep"
 
         return {
             "prompt": prompt,
@@ -205,14 +231,14 @@ def make_router_node(runtime: AgentRuntime):
     return router_node
 
 
-def make_simple_llm_node(runtime: AgentRuntime):
-    def simple_llm_node(state: AgentState) -> AgentState:
+def make_direct_node(runtime: AgentRuntime):
+    def direct_node(state: AgentState) -> AgentState:
         prompt = state["prompt"].strip()
         if not prompt:
             return {
                 "prompt": "",
                 "response": "Please provide a prompt.",
-                "route": "simple",
+                "route": "direct",
             }
 
         llm = runtime.llm_factory(runtime.model_name)
@@ -220,11 +246,11 @@ def make_simple_llm_node(runtime: AgentRuntime):
         try:
             model_response = llm.invoke(prompt)
         except Exception:
-            logger.exception("Simple model invocation failed.")
+            logger.exception("Direct model invocation failed.")
             return {
                 "prompt": prompt,
                 "response": "Model invocation failed. Please try again.",
-                "route": "simple",
+                "route": "direct",
             }
 
         response_text = str(model_response.content)
@@ -232,34 +258,36 @@ def make_simple_llm_node(runtime: AgentRuntime):
         return {
             "prompt": prompt,
             "response": response_text,
-            "route": "simple",
+            "route": "direct",
         }
 
-    return simple_llm_node
+    return direct_node
 
 
-def _select_route(state: AgentState) -> Literal["simple", "complex"]:
-    return state.get("route", "complex")
+def _select_route(state: AgentState) -> Literal["direct", "deep"]:
+    return state.get("route", "deep")
 
 
 def build_graph(runtime: AgentRuntime):
     graph = StateGraph(AgentState)
     graph.add_node("router", make_router_node(runtime))
-    graph.add_node("simple_llm", make_simple_llm_node(runtime))
-    graph.add_node("agent", make_agent_node(runtime))
+    graph.add_node("direct", make_direct_node(runtime))
+    graph.add_node("retrieval", make_retrieval_node(runtime))
+    graph.add_node("deep", make_deep_node(runtime))
 
     graph.add_edge(START, "router")
     graph.add_conditional_edges(
         "router",
         _select_route,
         {
-            "simple": "simple_llm",
-            "complex": "agent",
+            "direct": "direct",
+            "deep": "retrieval",
         },
     )
 
-    graph.add_edge("simple_llm", END)
-    graph.add_edge("agent", END)
+    graph.add_edge("direct", END)
+    graph.add_edge("retrieval", "deep")
+    graph.add_edge("deep", END)
 
     return graph.compile()
 
