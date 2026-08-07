@@ -2,6 +2,10 @@ import logging
 from dataclasses import dataclass
 from typing import Callable, Literal, NotRequired, TypedDict
 
+import chromadb
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+from langchain_openai import OpenAIEmbeddings
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel
@@ -24,6 +28,7 @@ class RouteDecision(BaseModel):
 @dataclass(frozen=True)
 class AgentRuntime:
     model_name: str
+    embedding_model: str
     llm_factory: Callable[[str], ChatOpenAI]
 
 
@@ -35,8 +40,64 @@ def build_default_runtime() -> AgentRuntime:
     settings = get_settings()
     return AgentRuntime(
         model_name=settings.openai_model,
+        embedding_model=settings.openai_embedding_model,
         llm_factory=_default_llm_factory,
     )
+
+
+def _get_collection():
+    settings = get_settings()
+    settings.chroma_persist_dir.mkdir(parents=True, exist_ok=True)
+    client = chromadb.PersistentClient(path=str(settings.chroma_persist_dir))
+    return client.get_or_create_collection(name=settings.chroma_collection_name)
+
+
+def _format_retrieved_context(
+    documents: list[str], metadatas: list[dict[str, object] | None]
+) -> str:
+    formatted_chunks: list[str] = []
+
+    for idx, document in enumerate(documents):
+        metadata = metadatas[idx] if idx < len(metadatas) else None
+        source = "unknown"
+
+        if metadata:
+            filename = metadata.get("filename")
+            chunk_index = metadata.get("chunk_index")
+            chunk_count = metadata.get("chunk_count")
+            if filename is not None:
+                source = str(filename)
+            if chunk_index is not None and chunk_count is not None:
+                source = f"{source} (chunk {chunk_index}/{chunk_count})"
+
+        formatted_chunks.append(
+            f"[Context {idx + 1} | source: {source}]\n{document.strip()}"
+        )
+
+    return "\n\n".join(formatted_chunks)
+
+
+def _retrieve_context(prompt: str, embedding_model: str, top_k: int = 4) -> str:
+    collection = _get_collection()
+    embedding_client = OpenAIEmbeddings(model=embedding_model)
+    query_embedding = embedding_client.embed_query(prompt)
+
+    result = collection.query(
+        query_embeddings=[query_embedding],
+        n_results=top_k,
+        include=["documents", "metadatas"],
+    )
+
+    document_rows = result.get("documents") or []
+    metadata_rows = result.get("metadatas") or []
+
+    documents = document_rows[0] if document_rows else []
+    metadatas = metadata_rows[0] if metadata_rows else []
+
+    if not documents:
+        return "No relevant context was retrieved from the knowledge base."
+
+    return _format_retrieved_context(documents, metadatas)
 
 
 def make_agent_node(runtime: AgentRuntime):
@@ -52,7 +113,39 @@ def make_agent_node(runtime: AgentRuntime):
         llm = runtime.llm_factory(runtime.model_name)
 
         try:
-            model_response = llm.invoke(prompt)
+            context = _retrieve_context(prompt, runtime.embedding_model)
+        except Exception:
+            logger.exception(
+                "Context retrieval failed. Continuing with an empty context."
+            )
+            context = "No relevant context was retrieved from the knowledge base."
+
+        rag_prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    "You are a helpful research assistant. Use the retrieved context "
+                    "to answer the user question. If the context is insufficient, "
+                    "state that clearly and answer with best-effort reasoning.",
+                ),
+                (
+                    "human",
+                    "Question:\n{question}\n\nRetrieved context:\n{context}\n\nAnswer:",
+                ),
+            ]
+        )
+
+        chain = (
+            RunnablePassthrough.assign(
+                question=lambda payload: payload["question"],
+                context=lambda payload: payload["context"],
+            )
+            | rag_prompt
+            | llm
+        )
+
+        try:
+            model_response = chain.invoke({"question": prompt, "context": context})
         except Exception:
             logger.exception("Model invocation failed.")
             return {
