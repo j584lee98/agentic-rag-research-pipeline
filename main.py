@@ -30,6 +30,16 @@ async def generate_graph_diagram() -> None:
 
     try:
         mermaid_syntax = agent_graph.get_graph().draw_mermaid()
+        mermaid_syntax = mermaid_syntax.replace(
+            "router -.-> direct;",
+            "router -. &nbsp;direct&nbsp; .-> direct;",
+            1,
+        )
+        mermaid_syntax = mermaid_syntax.replace(
+            "router -.-> retrieval;",
+            "router -. &nbsp;reason&nbsp; .-> retrieval;",
+            1,
+        )
         lr_mermaid_syntax = mermaid_syntax.replace("graph TD;", "graph LR;", 1)
         graph_png = draw_mermaid_png(lr_mermaid_syntax)
         output_path.write_bytes(graph_png)

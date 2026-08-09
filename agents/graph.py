@@ -18,12 +18,12 @@ logger = logging.getLogger(__name__)
 class AgentState(TypedDict):
     prompt: str
     response: str
-    route: NotRequired[Literal["direct", "deep"]]
+    route: NotRequired[Literal["direct", "reason"]]
     context: NotRequired[str]
 
 
 class RouteDecision(BaseModel):
-    route: Literal["direct", "deep"]
+    route: Literal["direct", "reason"]
 
 
 @dataclass(frozen=True)
@@ -108,7 +108,7 @@ def make_retrieval_node(runtime: AgentRuntime):
             return {
                 "prompt": "",
                 "response": "Please provide a prompt.",
-                "route": state.get("route", "deep"),
+                "route": state.get("route", "reason"),
                 "context": "",
             }
 
@@ -123,21 +123,21 @@ def make_retrieval_node(runtime: AgentRuntime):
         return {
             "prompt": prompt,
             "response": state.get("response", ""),
-            "route": state.get("route", "deep"),
+            "route": state.get("route", "reason"),
             "context": context,
         }
 
     return retrieval_node
 
 
-def make_deep_node(runtime: AgentRuntime):
-    def deep_node(state: AgentState) -> AgentState:
+def make_reason_node(runtime: AgentRuntime):
+    def reason_node(state: AgentState) -> AgentState:
         prompt = state["prompt"].strip()
         if not prompt:
             return {
                 "prompt": "",
                 "response": "Please provide a prompt.",
-                "route": state.get("route", "deep"),
+                "route": state.get("route", "reason"),
                 "context": state.get("context", ""),
             }
 
@@ -173,11 +173,11 @@ def make_deep_node(runtime: AgentRuntime):
         try:
             model_response = chain.invoke({"question": prompt, "context": context})
         except Exception:
-            logger.exception("Deep model invocation failed.")
+            logger.exception("Reasoning model invocation failed.")
             return {
                 "prompt": prompt,
                 "response": "Model invocation failed. Please try again.",
-                "route": state.get("route", "deep"),
+                "route": state.get("route", "reason"),
                 "context": context,
             }
 
@@ -186,11 +186,11 @@ def make_deep_node(runtime: AgentRuntime):
         return {
             "prompt": prompt,
             "response": response_text,
-            "route": state.get("route", "deep"),
+            "route": state.get("route", "reason"),
             "context": context,
         }
 
-    return deep_node
+    return reason_node
 
 
 def make_router_node(runtime: AgentRuntime):
@@ -208,8 +208,8 @@ def make_router_node(runtime: AgentRuntime):
 
         routing_prompt = (
             "You are a query complexity router. Classify the user prompt as either "
-            "'direct' or 'deep'. Return 'direct' for direct Q&A requests that can "
-            "be answered in one straightforward response. Return 'deep' if the "
+            "'direct' or 'reason'. Return 'direct' for direct Q&A requests that can "
+            "be answered in one straightforward response. Return 'reason' if the "
             "request requires multi-step reasoning, planning, tool use, or iterative "
             "processing.\n\n"
             f"User prompt:\n{prompt}"
@@ -219,8 +219,8 @@ def make_router_node(runtime: AgentRuntime):
             decision = router_llm.invoke(routing_prompt)
             route = decision.route
         except Exception:
-            logger.exception("Routing model invocation failed. Falling back to deep.")
-            route = "deep"
+            logger.exception("Routing model invocation failed. Falling back to reason.")
+            route = "reason"
 
         return {
             "prompt": prompt,
@@ -264,8 +264,8 @@ def make_direct_node(runtime: AgentRuntime):
     return direct_node
 
 
-def _select_route(state: AgentState) -> Literal["direct", "deep"]:
-    return state.get("route", "deep")
+def _select_route(state: AgentState) -> Literal["direct", "reason"]:
+    return state.get("route", "reason")
 
 
 def build_graph(runtime: AgentRuntime):
@@ -273,7 +273,7 @@ def build_graph(runtime: AgentRuntime):
     graph.add_node("router", make_router_node(runtime))
     graph.add_node("direct", make_direct_node(runtime))
     graph.add_node("retrieval", make_retrieval_node(runtime))
-    graph.add_node("deep", make_deep_node(runtime))
+    graph.add_node("reason", make_reason_node(runtime))
 
     graph.add_edge(START, "router")
     graph.add_conditional_edges(
@@ -281,13 +281,13 @@ def build_graph(runtime: AgentRuntime):
         _select_route,
         {
             "direct": "direct",
-            "deep": "retrieval",
+            "reason": "retrieval",
         },
     )
 
     graph.add_edge("direct", END)
-    graph.add_edge("retrieval", "deep")
-    graph.add_edge("deep", END)
+    graph.add_edge("retrieval", "reason")
+    graph.add_edge("reason", END)
 
     return graph.compile()
 
