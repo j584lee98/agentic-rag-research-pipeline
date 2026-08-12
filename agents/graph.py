@@ -1,6 +1,6 @@
 from langgraph.graph import END, START, StateGraph
 
-from agents.nodes.analysis import make_analysis_node
+from agents.nodes.analysis import make_analysis_node, select_analysis_verdict
 from agents.nodes.input import make_normalize_input_node
 from agents.nodes.reasoning import make_reason_node
 from agents.nodes.retrieval import make_retrieval_node
@@ -20,7 +20,7 @@ def build_graph(runtime: AgentRuntime):
     graph.add_node("router", make_router_node(runtime))
     graph.add_node("direct", make_direct_node(runtime))
     graph.add_node("retrieval", make_retrieval_node(runtime))
-    graph.add_node("analysis", make_analysis_node())
+    graph.add_node("analysis", make_analysis_node(runtime))
     graph.add_node("reason", make_reason_node(runtime))
 
     graph.add_edge(START, "normalize_input")
@@ -32,7 +32,11 @@ def build_graph(runtime: AgentRuntime):
     )
     graph.add_edge("direct", END)
     graph.add_edge("retrieval", "analysis")
-    graph.add_edge("analysis", "reason")
+    graph.add_conditional_edges(
+        "analysis",
+        select_analysis_verdict,
+        {"pass": "reason", "fail": "retrieval"},
+    )
     graph.add_edge("reason", END)
 
     return graph.compile()

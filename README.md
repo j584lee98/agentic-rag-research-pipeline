@@ -10,7 +10,8 @@ This project contains:
 ## LangGraph agent
 
 - Graph entry point: `agent_graph` in `agents/graph.py`
-- Reasoning route: `retrieval` -> `analysis` -> `reason`
+- Reasoning route: `retrieval` -> `analysis` -> `reason`, with `analysis`
+	returning to `retrieval` when its structured assessment fails
 - Direct route: `direct`
 - Invocation helper: `invoke_agent(prompt: str) -> str` in `agents/graph.py`
 - API schemas: `InvokeRequest` and `InvokeResponse` in `app/schemas.py`
@@ -24,10 +25,12 @@ This project contains:
 - `agents/analysis.py`: deterministic retrieval diagnostics
 - `agents/nodes/`: individual routing, retrieval, analysis, and reasoning nodes
 
-The router chooses either `direct` -> `END` or
-`retrieval` -> `analysis` -> `reason` -> `END`. Nodes return only the state
-fields they update, allowing future branches to add state without overwriting
-unrelated values.
+The router chooses either `direct` -> `END` or `retrieval` -> `analysis`.
+Analysis computes deterministic score statistics, then asks an LLM for a
+structured `pass` or `fail` assessment using the prompt, retrieved context, and
+statistics. `pass` continues to `reason` -> `END`; `fail` returns to
+`retrieval`. Nodes return only the state fields they update, allowing future
+branches to add state without overwriting unrelated values.
 
 ### Environment variables
 

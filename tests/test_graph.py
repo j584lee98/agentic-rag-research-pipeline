@@ -1,9 +1,11 @@
 import unittest
+from unittest.mock import MagicMock
 
 from agents.analysis import compute_retrieval_diagnostics
 from agents.graph import agent_graph
 from agents.nodes.analysis import make_analysis_node
 from agents.nodes.input import make_normalize_input_node
+from agents.runtime import AgentRuntime
 
 
 class RetrievalDiagnosticsTests(unittest.TestCase):
@@ -13,13 +15,33 @@ class RetrievalDiagnosticsTests(unittest.TestCase):
         self.assertEqual(diagnostics.chunk_count, 0)
         self.assertEqual(diagnostics.coverage_verdict, "insufficient")
 
-    def test_analysis_node_returns_only_diagnostics_update(self) -> None:
-        result = make_analysis_node()(
-            {"prompt": "question", "response": "", "retrieval_distances": [0.2, 0.4]}
+    def test_analysis_node_returns_diagnostics_and_llm_pass_verdict(self) -> None:
+        llm = MagicMock()
+        llm.with_structured_output.return_value.invoke.return_value.verdict = "pass"
+        runtime = AgentRuntime(
+            model_name="test-model",
+            embedding_model="test-embedding",
+            llm_factory=lambda _: llm,
         )
 
-        self.assertEqual(set(result), {"retrieval_diagnostics"})
+        result = make_analysis_node(runtime)(
+            {
+                "prompt": "question",
+                "response": "",
+                "context": "[Context 1 | source: test]\nRelevant answer",
+                "retrieval_distances": [0.2, 0.4],
+            }
+        )
+
+        self.assertEqual(set(result), {"retrieval_diagnostics", "analysis_verdict"})
         self.assertEqual(result["retrieval_diagnostics"].coverage_verdict, "sufficient")
+        self.assertEqual(result["analysis_verdict"], "pass")
+        assessment_prompt = (
+            llm.with_structured_output.return_value.invoke.call_args.args[0]
+        )
+        self.assertIn("question", assessment_prompt)
+        self.assertIn("Relevant answer", assessment_prompt)
+        self.assertIn("similarity scores", assessment_prompt)
 
 
 class GraphTopologyTests(unittest.TestCase):
@@ -68,6 +90,7 @@ class GraphTopologyTests(unittest.TestCase):
                 ("normalize_input", "router"),
                 ("retrieval", "analysis"),
                 ("analysis", "reason"),
+                ("analysis", "retrieval"),
                 ("reason", "__end__"),
             }
             <= edges

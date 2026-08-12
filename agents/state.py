@@ -3,6 +3,7 @@ from typing import Literal, NotRequired, TypedDict
 
 
 Route = Literal["direct", "reason"]
+AnalysisVerdict = Literal["pass", "fail"]
 CoverageVerdict = Literal["sufficient", "partial", "insufficient"]
 
 NO_RETRIEVED_CONTEXT = "No relevant context was retrieved from the knowledge base."
@@ -32,6 +33,7 @@ class AgentState(TypedDict):
     context: NotRequired[str]
     retrieval_distances: NotRequired[list[float]]
     retrieval_diagnostics: NotRequired[RetrievalDiagnostics]
+    analysis_verdict: NotRequired[AnalysisVerdict]
 
 
 class AgentStateUpdate(TypedDict, total=False):
@@ -41,3 +43,4 @@ class AgentStateUpdate(TypedDict, total=False):
     context: str
     retrieval_distances: list[float]
     retrieval_diagnostics: RetrievalDiagnostics
+    analysis_verdict: AnalysisVerdict
