@@ -1,5 +1,8 @@
 import logging
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import FastAPI, File, UploadFile
 from langchain_core.runnables.graph_mermaid import draw_mermaid_png
@@ -18,14 +21,8 @@ from app.services import AgentService, DocumentService
 logger = logging.getLogger(__name__)
 
 
-app = FastAPI(title="Agentic RAG Research Pipeline")
-
-agent_service = AgentService()
-document_service = DocumentService()
-
-
-@app.on_event("startup")
-async def generate_graph_diagram() -> None:
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
     output_path = Path(__file__).resolve().parent / "flow.png"
 
     try:
@@ -47,6 +44,14 @@ async def generate_graph_diagram() -> None:
     except Exception:
         logger.exception("Failed to generate LangGraph flow diagram.")
 
+    yield
+
+
+app = FastAPI(title="Agentic RAG Research Pipeline", lifespan=lifespan)
+
+agent_service = AgentService()
+document_service = DocumentService()
+
 
 @app.get("/")
 async def hello_world() -> dict[str, str]:
@@ -64,8 +69,10 @@ async def invoke(request: InvokeRequest) -> InvokeResponse:
 
 
 @app.post("/documents/ingest", response_model=IngestDocumentResponse)
-async def ingest_document(file: UploadFile = File(...)) -> IngestDocumentResponse:
-    result = document_service.ingest(file)
+async def ingest_document(
+    file: Annotated[UploadFile, File()],
+) -> IngestDocumentResponse:
+    result = await document_service.ingest(file)
     return IngestDocumentResponse(**result)
 
 

@@ -104,12 +104,12 @@ def _get_collection():
     return client.get_or_create_collection(name=CHROMA_COLLECTION_NAME)
 
 
-def ingest_upload(upload: UploadFile) -> dict[str, str | int]:
+async def ingest_upload(upload: UploadFile) -> dict[str, str | int]:
     if not upload.filename:
         raise HTTPException(status_code=400, detail="A filename is required.")
 
     extension = _ensure_supported_file(upload.filename)
-    raw = upload.file.read()
+    raw = await upload.read()
     if not raw:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 

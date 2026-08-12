@@ -4,13 +4,14 @@
 
 This project contains:
 
-- a minimal single-node LangGraph agent
+- a routed LangGraph research agent with deterministic retrieval diagnostics
 - a document ingestion endpoint that chunks and embeds uploads into ChromaDB
 
 ## LangGraph agent
 
 - Graph entry point: `agent_graph` in `agents/graph.py`
-- Node: `agent_node` in `agents/graph.py`
+- Reasoning route: `retrieval` -> `analysis` -> `reason`
+- Direct route: `direct`
 - Invocation helper: `invoke_agent(prompt: str) -> str` in `agents/graph.py`
 - API schemas: `InvokeRequest` and `InvokeResponse` in `app/schemas.py`
 
