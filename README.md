@@ -15,6 +15,20 @@ This project contains:
 - Invocation helper: `invoke_agent(prompt: str) -> str` in `agents/graph.py`
 - API schemas: `InvokeRequest` and `InvokeResponse` in `app/schemas.py`
 
+### Graph structure
+
+- `agents/graph.py`: graph assembly and public invocation API
+- `agents/state.py`: shared graph state, diagnostics types, and constants
+- `agents/runtime.py`: model runtime configuration
+- `agents/retrieval.py`: ChromaDB retrieval and context formatting
+- `agents/analysis.py`: deterministic retrieval diagnostics
+- `agents/nodes/`: individual routing, retrieval, analysis, and reasoning nodes
+
+The router chooses either `direct` -> `END` or
+`retrieval` -> `analysis` -> `reason` -> `END`. Nodes return only the state
+fields they update, allowing future branches to add state without overwriting
+unrelated values.
+
 ### Environment variables
 
 Set your OpenAI API key before invoking the agent:
