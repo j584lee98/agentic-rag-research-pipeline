@@ -1,6 +1,7 @@
 from langgraph.graph import END, START, StateGraph
 
 from agents.nodes.analysis import make_analysis_node
+from agents.nodes.input import make_normalize_input_node
 from agents.nodes.reasoning import make_reason_node
 from agents.nodes.retrieval import make_retrieval_node
 from agents.nodes.routing import make_direct_node, make_router_node, select_route
@@ -15,13 +16,15 @@ def build_graph(runtime: AgentRuntime):
     progress through retrieval, deterministic analysis, and reasoning.
     """
     graph = StateGraph(AgentState)
+    graph.add_node("normalize_input", make_normalize_input_node())
     graph.add_node("router", make_router_node(runtime))
     graph.add_node("direct", make_direct_node(runtime))
     graph.add_node("retrieval", make_retrieval_node(runtime))
     graph.add_node("analysis", make_analysis_node())
     graph.add_node("reason", make_reason_node(runtime))
 
-    graph.add_edge(START, "router")
+    graph.add_edge(START, "normalize_input")
+    graph.add_edge("normalize_input", "router")
     graph.add_conditional_edges(
         "router",
         select_route,
