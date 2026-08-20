@@ -44,6 +44,7 @@ class AgentState(TypedDict):
     context: NotRequired[str]
     retrieval_distances: NotRequired[list[float]]
     query_retrievals: NotRequired[list[QueryRetrieval]]
+    final_document_chunks: NotRequired[list[str]]
     retrieval_diagnostics: NotRequired[RetrievalDiagnostics]
     analysis_verdict: NotRequired[AnalysisVerdict]
 
@@ -55,5 +56,6 @@ class AgentStateUpdate(TypedDict, total=False):
     context: str
     retrieval_distances: list[float]
     query_retrievals: list[QueryRetrieval]
+    final_document_chunks: list[str]
     retrieval_diagnostics: RetrievalDiagnostics
     analysis_verdict: AnalysisVerdict

@@ -22,6 +22,7 @@ def make_retrieval_node(runtime: AgentRuntime):
                 "context": "",
                 "retrieval_distances": [],
                 "query_retrievals": [],
+                "final_document_chunks": [],
             }
 
         try:
@@ -31,6 +32,7 @@ def make_retrieval_node(runtime: AgentRuntime):
             return {
                 "context": NO_RETRIEVED_CONTEXT,
                 "retrieval_distances": [],
+                "final_document_chunks": [],
                 "query_retrievals": [
                     {
                         "query": prompt,
@@ -47,6 +49,7 @@ def make_retrieval_node(runtime: AgentRuntime):
             if documents
             else NO_RETRIEVED_CONTEXT,
             "retrieval_distances": distances,
+            "final_document_chunks": documents,
             "query_retrievals": [
                 {
                     "query": prompt,

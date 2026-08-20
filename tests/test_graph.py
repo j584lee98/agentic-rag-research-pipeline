@@ -6,6 +6,7 @@ from agents.graph import agent_graph
 from agents.nodes.analysis import make_analysis_node
 from agents.nodes.expand_query import make_expand_query_node
 from agents.nodes.input import make_normalize_input_node
+from agents.nodes.merge_deduplicate import make_merge_deduplicate_node
 from agents.nodes.retrieval import make_retrieval_node
 from agents.runtime import AgentRuntime
 
@@ -83,6 +84,7 @@ class GraphTopologyTests(unittest.TestCase):
                 "retrieval",
                 "analysis",
                 "expand_query",
+                "merge_deduplicate",
                 "reason",
             }
             <= nodes
@@ -94,7 +96,8 @@ class GraphTopologyTests(unittest.TestCase):
                 ("retrieval", "analysis"),
                 ("analysis", "reason"),
                 ("analysis", "expand_query"),
-                ("expand_query", "reason"),
+                ("expand_query", "merge_deduplicate"),
+                ("merge_deduplicate", "reason"),
                 ("reason", "__end__"),
             }
             <= edges
@@ -173,10 +176,36 @@ class QueryExpansionTests(unittest.TestCase):
             [record["query_type"] for record in result["query_retrievals"]],
             ["original", "generated", "generated"],
         )
-        self.assertIn("original chunk", result["context"])
-        self.assertIn("first chunk", result["context"])
-        self.assertIn("second chunk", result["context"])
         self.assertEqual(retrieve_mock.call_count, 2)
+
+    def test_merge_deduplicate_combines_all_query_retrievals(self) -> None:
+        result = make_merge_deduplicate_node(self.runtime)(
+            {
+                "prompt": "question",
+                "response": "",
+                "query_retrievals": [
+                    {
+                        "query": "question",
+                        "query_type": "original",
+                        "document_chunks": ["Original chunk", "Shared chunk"],
+                        "metadatas": [{}, {}],
+                        "distances": [0.1, 0.2],
+                    },
+                    {
+                        "query": "alternative",
+                        "query_type": "generated",
+                        "document_chunks": ["  shared   CHUNK ", "Generated chunk"],
+                        "metadatas": [{}, {}],
+                        "distances": [0.3, 0.4],
+                    },
+                ],
+            }
+        )
+
+        self.assertEqual(
+            result["final_document_chunks"],
+            ["Original chunk", "Shared chunk", "Generated chunk"],
+        )
 
 
 if __name__ == "__main__":

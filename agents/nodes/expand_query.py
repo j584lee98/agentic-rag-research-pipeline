@@ -2,12 +2,11 @@ import logging
 
 from pydantic import BaseModel, Field
 
-from agents.retrieval import format_context, retrieve
+from agents.retrieval import retrieve
 from agents.runtime import AgentRuntime
 from agents.state import (
     AgentState,
     AgentStateUpdate,
-    NO_RETRIEVED_CONTEXT,
     QueryRetrieval,
 )
 
@@ -63,21 +62,8 @@ def make_expand_query_node(runtime: AgentRuntime):
                 }
             )
 
-        query_retrievals = existing_retrievals + generated_retrievals
-        contexts = [
-            format_context(record["document_chunks"], record["metadatas"])
-            for record in query_retrievals
-            if record["document_chunks"]
-        ]
-
         return {
-            "context": "\n\n".join(contexts) if contexts else NO_RETRIEVED_CONTEXT,
-            "retrieval_distances": [
-                distance
-                for record in query_retrievals
-                for distance in record["distances"]
-            ],
-            "query_retrievals": query_retrievals,
+            "query_retrievals": existing_retrievals + generated_retrievals,
         }
 
     return expand_query_node

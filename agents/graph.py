@@ -3,6 +3,7 @@ from langgraph.graph import END, START, StateGraph
 from agents.nodes.analysis import make_analysis_node, select_analysis_verdict
 from agents.nodes.expand_query import make_expand_query_node
 from agents.nodes.input import make_normalize_input_node
+from agents.nodes.merge_deduplicate import make_merge_deduplicate_node
 from agents.nodes.reasoning import make_reason_node
 from agents.nodes.retrieval import make_retrieval_node
 from agents.nodes.routing import make_direct_node, make_router_node, select_route
@@ -23,6 +24,7 @@ def build_graph(runtime: AgentRuntime):
     graph.add_node("retrieval", make_retrieval_node(runtime))
     graph.add_node("analysis", make_analysis_node(runtime))
     graph.add_node("expand_query", make_expand_query_node(runtime))
+    graph.add_node("merge_deduplicate", make_merge_deduplicate_node(runtime))
     graph.add_node("reason", make_reason_node(runtime))
 
     graph.add_edge(START, "normalize_input")
@@ -39,7 +41,8 @@ def build_graph(runtime: AgentRuntime):
         select_analysis_verdict,
         {"pass": "reason", "fail": "expand_query"},
     )
-    graph.add_edge("expand_query", "reason")
+    graph.add_edge("expand_query", "merge_deduplicate")
+    graph.add_edge("merge_deduplicate", "reason")
     graph.add_edge("reason", END)
 
     return graph.compile()

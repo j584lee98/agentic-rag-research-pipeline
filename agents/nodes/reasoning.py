@@ -53,6 +53,16 @@ def format_diagnostics(diagnostics: RetrievalDiagnostics | None) -> str:
     )
 
 
+def format_document_chunks(document_chunks: list[str]) -> str:
+    if not document_chunks:
+        return NO_RETRIEVED_CONTEXT
+
+    return "\n\n".join(
+        f"[Context {index}]\n{document_chunk.strip()}"
+        for index, document_chunk in enumerate(document_chunks, start=1)
+    )
+
+
 def make_reason_node(runtime: AgentRuntime):
     def reason_node(state: AgentState) -> AgentStateUpdate:
         prompt = state["prompt"].strip()
@@ -65,7 +75,9 @@ def make_reason_node(runtime: AgentRuntime):
             ).invoke(
                 {
                     "question": prompt,
-                    "context": state.get("context", NO_RETRIEVED_CONTEXT),
+                    "context": format_document_chunks(
+                        state.get("final_document_chunks", [])
+                    ),
                     "diagnostics_summary": format_diagnostics(
                         state.get("retrieval_diagnostics")
                     ),
