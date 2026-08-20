@@ -5,6 +5,7 @@ from agents.nodes.expand_query import make_expand_query_node
 from agents.nodes.input import make_normalize_input_node
 from agents.nodes.merge_deduplicate import make_merge_deduplicate_node
 from agents.nodes.reasoning import make_reason_node
+from agents.nodes.rerank import make_rerank_node
 from agents.nodes.retrieval import make_retrieval_node
 from agents.nodes.routing import make_direct_node, make_router_node, select_route
 from agents.runtime import AgentRuntime, build_default_runtime
@@ -25,6 +26,7 @@ def build_graph(runtime: AgentRuntime):
     graph.add_node("analysis", make_analysis_node(runtime))
     graph.add_node("expand_query", make_expand_query_node(runtime))
     graph.add_node("merge_deduplicate", make_merge_deduplicate_node(runtime))
+    graph.add_node("rerank", make_rerank_node(runtime))
     graph.add_node("reason", make_reason_node(runtime))
 
     graph.add_edge(START, "normalize_input")
@@ -39,10 +41,11 @@ def build_graph(runtime: AgentRuntime):
     graph.add_conditional_edges(
         "analysis",
         select_analysis_verdict,
-        {"pass": "reason", "fail": "expand_query"},
+        {"pass": "rerank", "fail": "expand_query"},
     )
     graph.add_edge("expand_query", "merge_deduplicate")
-    graph.add_edge("merge_deduplicate", "reason")
+    graph.add_edge("merge_deduplicate", "rerank")
+    graph.add_edge("rerank", "reason")
     graph.add_edge("reason", END)
 
     return graph.compile()

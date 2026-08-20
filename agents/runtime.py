@@ -10,6 +10,8 @@ from app.config import get_settings
 class AgentRuntime:
     model_name: str
     embedding_model: str
+    vllm_base_url: str
+    rerank_model: str
     llm_factory: Callable[[str], ChatOpenAI]
 
 
@@ -18,5 +20,7 @@ def build_default_runtime() -> AgentRuntime:
     return AgentRuntime(
         model_name=settings.openai_model,
         embedding_model=settings.openai_embedding_model,
+        vllm_base_url=settings.vllm_base_url,
+        rerank_model=settings.vllm_rerank_model,
         llm_factory=ChatOpenAI,
     )

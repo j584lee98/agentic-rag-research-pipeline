@@ -12,6 +12,8 @@ load_dotenv()
 class Settings:
     openai_model: str
     openai_embedding_model: str
+    vllm_base_url: str
+    vllm_rerank_model: str
     chroma_collection_name: str
     chroma_persist_dir: Path
     documents_dir: Path
@@ -35,6 +37,8 @@ def get_settings() -> Settings:
         openai_embedding_model=os.getenv(
             "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
         ),
+        vllm_base_url=os.getenv("VLLM_BASE_URL", "http://localhost:8000/v1"),
+        vllm_rerank_model=os.getenv("VLLM_RERANK_MODEL", "BAAI/bge-reranker-v2-m3"),
         chroma_collection_name=os.getenv(
             "CHROMA_COLLECTION_NAME", "research_documents"
         ),

@@ -10,8 +10,8 @@ This project contains:
 ## LangGraph agent
 
 - Graph entry point: `agent_graph` in `agents/graph.py`
-- Reasoning route: `retrieval` -> `analysis` -> `reason`, with `analysis`
-	returning to `retrieval` when its structured assessment fails
+- Reasoning route: `retrieval` -> `analysis` -> `rerank` -> `reason`, with
+  query expansion and deduplication before reranking when analysis fails
 - Direct route: `direct`
 - Invocation helper: `invoke_agent(prompt: str) -> str` in `agents/graph.py`
 - API schemas: `InvokeRequest` and `InvokeResponse` in `app/schemas.py`
@@ -28,8 +28,10 @@ This project contains:
 The router chooses either `direct` -> `END` or `retrieval` -> `analysis`.
 Analysis computes deterministic score statistics, then asks an LLM for a
 structured `pass` or `fail` assessment using the prompt, retrieved context, and
-statistics. `pass` continues to `reason` -> `END`; `fail` returns to
-`retrieval`. Nodes return only the state fields they update, allowing future
+statistics. `pass` continues to `rerank` -> `reason` -> `END`; `fail` expands
+the query, retrieves additional chunks, merges and deduplicates them, then
+reranks the candidates. The vLLM reranker selects the five highest-ranked chunks
+for reasoning. Nodes return only the state fields they update, allowing future
 branches to add state without overwriting unrelated values.
 
 ### Environment variables
@@ -44,6 +46,14 @@ Optional model override:
 
 ```bash
 set OPENAI_MODEL=gpt-5-nano
+```
+
+Run a vLLM server with a reranker model, then configure its OpenAI-compatible
+base URL and model name (these are the defaults):
+
+```bash
+set VLLM_BASE_URL=http://localhost:8000/v1
+set VLLM_RERANK_MODEL=BAAI/bge-reranker-v2-m3
 ```
 
 ## Document ingestion service

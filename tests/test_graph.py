@@ -7,6 +7,7 @@ from agents.nodes.analysis import make_analysis_node
 from agents.nodes.expand_query import make_expand_query_node
 from agents.nodes.input import make_normalize_input_node
 from agents.nodes.merge_deduplicate import make_merge_deduplicate_node
+from agents.nodes.rerank import make_rerank_node
 from agents.nodes.retrieval import make_retrieval_node
 from agents.runtime import AgentRuntime
 
@@ -24,6 +25,8 @@ class RetrievalDiagnosticsTests(unittest.TestCase):
         runtime = AgentRuntime(
             model_name="test-model",
             embedding_model="test-embedding",
+            vllm_base_url="http://vllm.test/v1",
+            rerank_model="test-reranker",
             llm_factory=lambda _: llm,
         )
 
@@ -85,6 +88,7 @@ class GraphTopologyTests(unittest.TestCase):
                 "analysis",
                 "expand_query",
                 "merge_deduplicate",
+                "rerank",
                 "reason",
             }
             <= nodes
@@ -94,10 +98,11 @@ class GraphTopologyTests(unittest.TestCase):
                 ("__start__", "normalize_input"),
                 ("normalize_input", "router"),
                 ("retrieval", "analysis"),
-                ("analysis", "reason"),
+                ("analysis", "rerank"),
                 ("analysis", "expand_query"),
                 ("expand_query", "merge_deduplicate"),
-                ("merge_deduplicate", "reason"),
+                ("merge_deduplicate", "rerank"),
+                ("rerank", "reason"),
                 ("reason", "__end__"),
             }
             <= edges
@@ -110,6 +115,8 @@ class QueryExpansionTests(unittest.TestCase):
         self.runtime = AgentRuntime(
             model_name="test-model",
             embedding_model="test-embedding",
+            vllm_base_url="http://vllm.test/v1",
+            rerank_model="test-reranker",
             llm_factory=lambda _: self.llm,
         )
 
@@ -205,6 +212,31 @@ class QueryExpansionTests(unittest.TestCase):
         self.assertEqual(
             result["final_document_chunks"],
             ["Original chunk", "Shared chunk", "Generated chunk"],
+        )
+
+    @patch("agents.nodes.rerank.rerank")
+    def test_rerank_keeps_top_five_chunks_in_reranker_order(
+        self, rerank_mock: MagicMock
+    ) -> None:
+        rerank_mock.return_value = [5, 2, 4, 0, 3, 1]
+
+        result = make_rerank_node(self.runtime)(
+            {
+                "prompt": "question",
+                "response": "",
+                "final_document_chunks": [f"chunk {index}" for index in range(6)],
+            }
+        )
+
+        self.assertEqual(
+            result["final_document_chunks"],
+            ["chunk 5", "chunk 2", "chunk 4", "chunk 0", "chunk 3"],
+        )
+        rerank_mock.assert_called_once_with(
+            "question",
+            [f"chunk {index}" for index in range(6)],
+            model_name="test-reranker",
+            base_url="http://vllm.test/v1",
         )
 
 
