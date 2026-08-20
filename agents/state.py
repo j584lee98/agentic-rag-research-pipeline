@@ -5,6 +5,7 @@ from typing import Literal, NotRequired, TypedDict
 Route = Literal["direct", "reason"]
 AnalysisVerdict = Literal["pass", "fail"]
 CoverageVerdict = Literal["sufficient", "partial", "insufficient"]
+QueryType = Literal["original", "generated"]
 
 NO_RETRIEVED_CONTEXT = "No relevant context was retrieved from the knowledge base."
 EMPTY_PROMPT_RESPONSE = "Please provide a prompt."
@@ -26,12 +27,23 @@ class RetrievalDiagnostics:
     coverage_verdict: CoverageVerdict = "insufficient"
 
 
+class QueryRetrieval(TypedDict):
+    """Retrieved chunks and supporting data for one search query."""
+
+    query: str
+    query_type: QueryType
+    document_chunks: list[str]
+    metadatas: list[dict[str, object] | None]
+    distances: list[float]
+
+
 class AgentState(TypedDict):
     prompt: str
     response: str
     route: NotRequired[Route]
     context: NotRequired[str]
     retrieval_distances: NotRequired[list[float]]
+    query_retrievals: NotRequired[list[QueryRetrieval]]
     retrieval_diagnostics: NotRequired[RetrievalDiagnostics]
     analysis_verdict: NotRequired[AnalysisVerdict]
 
@@ -42,5 +54,6 @@ class AgentStateUpdate(TypedDict, total=False):
     route: Route
     context: str
     retrieval_distances: list[float]
+    query_retrievals: list[QueryRetrieval]
     retrieval_diagnostics: RetrievalDiagnostics
     analysis_verdict: AnalysisVerdict

@@ -1,10 +1,12 @@
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from agents.analysis import compute_retrieval_diagnostics
 from agents.graph import agent_graph
 from agents.nodes.analysis import make_analysis_node
+from agents.nodes.expand_query import make_expand_query_node
 from agents.nodes.input import make_normalize_input_node
+from agents.nodes.retrieval import make_retrieval_node
 from agents.runtime import AgentRuntime
 
 
@@ -80,6 +82,7 @@ class GraphTopologyTests(unittest.TestCase):
                 "direct",
                 "retrieval",
                 "analysis",
+                "expand_query",
                 "reason",
             }
             <= nodes
@@ -90,11 +93,90 @@ class GraphTopologyTests(unittest.TestCase):
                 ("normalize_input", "router"),
                 ("retrieval", "analysis"),
                 ("analysis", "reason"),
-                ("analysis", "retrieval"),
+                ("analysis", "expand_query"),
+                ("expand_query", "reason"),
                 ("reason", "__end__"),
             }
             <= edges
         )
+
+
+class QueryExpansionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.llm = MagicMock()
+        self.runtime = AgentRuntime(
+            model_name="test-model",
+            embedding_model="test-embedding",
+            llm_factory=lambda _: self.llm,
+        )
+
+    @patch("agents.nodes.retrieval.retrieve")
+    def test_initial_retrieval_records_original_query(
+        self, retrieve_mock: MagicMock
+    ) -> None:
+        retrieve_mock.return_value = (
+            ["original chunk"],
+            [{"filename": "test"}],
+            [0.2],
+        )
+
+        result = make_retrieval_node(self.runtime)(
+            {"prompt": "question", "response": ""}
+        )
+
+        self.assertEqual(
+            result["query_retrievals"],
+            [
+                {
+                    "query": "question",
+                    "query_type": "original",
+                    "document_chunks": ["original chunk"],
+                    "metadatas": [{"filename": "test"}],
+                    "distances": [0.2],
+                }
+            ],
+        )
+
+    @patch("agents.nodes.expand_query.retrieve")
+    def test_expanded_retrievals_append_to_original_record(
+        self, retrieve_mock: MagicMock
+    ) -> None:
+        self.llm.with_structured_output.return_value.invoke.return_value.queries = [
+            "alternative one",
+            "alternative two",
+        ]
+        retrieve_mock.side_effect = [
+            (["first chunk"], [{"filename": "first"}], [0.2]),
+            (["second chunk"], [{"filename": "second"}], [0.4]),
+        ]
+        original_record = {
+            "query": "question",
+            "query_type": "original",
+            "document_chunks": ["original chunk"],
+            "metadatas": [{"filename": "original"}],
+            "distances": [0.1],
+        }
+
+        result = make_expand_query_node(self.runtime)(
+            {
+                "prompt": "question",
+                "response": "",
+                "query_retrievals": [original_record],
+            }
+        )
+
+        self.assertEqual(
+            [record["query"] for record in result["query_retrievals"]],
+            ["question", "alternative one", "alternative two"],
+        )
+        self.assertEqual(
+            [record["query_type"] for record in result["query_retrievals"]],
+            ["original", "generated", "generated"],
+        )
+        self.assertIn("original chunk", result["context"])
+        self.assertIn("first chunk", result["context"])
+        self.assertIn("second chunk", result["context"])
+        self.assertEqual(retrieve_mock.call_count, 2)
 
 
 if __name__ == "__main__":
