@@ -73,6 +73,26 @@ The ingestion endpoint:
 uv run uvicorn main:app --reload
 ```
 
+## Run with Docker
+
+Docker Compose starts the FastAPI application, a persistent Chroma server, and
+a GPU-backed vLLM reranker. Copy the environment template, supply the required
+OpenAI API key, then start the stack:
+
+```bash
+copy .env.example .env
+docker compose up --build
+```
+
+The API is available at `http://localhost:8000`, Chroma is exposed on port
+`8001`, and vLLM is exposed on port `8002`. The vLLM container requires a
+working NVIDIA Container Toolkit installation and a compatible NVIDIA GPU. Its
+first startup downloads the reranker model into the `huggingface_cache` volume.
+
+The application automatically uses Chroma's HTTP API when `CHROMA_HOST` is
+set; leaving it unset preserves the local persistent Chroma behavior used for
+non-container development.
+
 ## API endpoints
 
 ### Invoke the agent

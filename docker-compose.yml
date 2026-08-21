@@ -1,0 +1,58 @@
+services:
+  app:
+    build:
+      context: .
+    env_file:
+      - .env
+    environment:
+      CHROMA_HOST: chroma
+      CHROMA_PORT: 8000
+      VLLM_BASE_URL: http://vllm:8000/v1
+      DOCUMENTS_DIR: /app/data/documents
+    depends_on:
+      chroma:
+        condition: service_healthy
+      vllm:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    volumes:
+      - documents_data:/app/data/documents
+    restart: unless-stopped
+
+  chroma:
+    image: chromadb/chroma:1.0.20
+    environment:
+      IS_PERSISTENT: "TRUE"
+      PERSIST_DIRECTORY: /chroma/chroma
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8000/api/v2/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  vllm:
+    image: vllm/vllm-openai:latest
+    command:
+      - --model
+      - ${VLLM_RERANK_MODEL:-BAAI/bge-reranker-v2-m3}
+      - --runner
+      - pooling
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+    ports:
+      - "8002:8000"
+    volumes:
+      - huggingface_cache:/root/.cache/huggingface
+    gpus: all
+    restart: unless-stopped
+
+volumes:
+  chroma_data:
+  documents_data:
+  huggingface_cache:

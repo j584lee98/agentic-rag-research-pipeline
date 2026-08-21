@@ -99,8 +99,14 @@ def _delete_file_if_exists(path: Path) -> None:
 
 
 def _get_collection():
-    CHROMA_PERSIST_DIR.mkdir(parents=True, exist_ok=True)
-    client = chromadb.PersistentClient(path=str(CHROMA_PERSIST_DIR))
+    if SETTINGS.chroma_host:
+        client = chromadb.HttpClient(
+            host=SETTINGS.chroma_host,
+            port=SETTINGS.chroma_port,
+        )
+    else:
+        CHROMA_PERSIST_DIR.mkdir(parents=True, exist_ok=True)
+        client = chromadb.PersistentClient(path=str(CHROMA_PERSIST_DIR))
     return client.get_or_create_collection(name=CHROMA_COLLECTION_NAME)
 
 

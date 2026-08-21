@@ -6,8 +6,14 @@ from app.config import get_settings
 
 def get_collection() -> chromadb.Collection:
     settings = get_settings()
-    settings.chroma_persist_dir.mkdir(parents=True, exist_ok=True)
-    client = chromadb.PersistentClient(path=str(settings.chroma_persist_dir))
+    if settings.chroma_host:
+        client = chromadb.HttpClient(
+            host=settings.chroma_host,
+            port=settings.chroma_port,
+        )
+    else:
+        settings.chroma_persist_dir.mkdir(parents=True, exist_ok=True)
+        client = chromadb.PersistentClient(path=str(settings.chroma_persist_dir))
     return client.get_or_create_collection(name=settings.chroma_collection_name)
 
 

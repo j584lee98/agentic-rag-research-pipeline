@@ -15,6 +15,8 @@ class Settings:
     vllm_base_url: str
     vllm_rerank_model: str
     chroma_collection_name: str
+    chroma_host: str | None
+    chroma_port: int
     chroma_persist_dir: Path
     documents_dir: Path
     chunk_size: int
@@ -42,6 +44,8 @@ def get_settings() -> Settings:
         chroma_collection_name=os.getenv(
             "CHROMA_COLLECTION_NAME", "research_documents"
         ),
+        chroma_host=os.getenv("CHROMA_HOST") or None,
+        chroma_port=int(os.getenv("CHROMA_PORT", "8000")),
         chroma_persist_dir=Path(
             os.getenv("CHROMA_PERSIST_DIR", "data/chroma")
         ).resolve(),
