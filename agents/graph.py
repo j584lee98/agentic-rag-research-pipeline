@@ -8,8 +8,18 @@ from agents.nodes.reasoning import make_reason_node
 from agents.nodes.rerank import make_rerank_node
 from agents.nodes.retrieval import make_retrieval_node
 from agents.nodes.routing import make_direct_node, make_router_node, select_route
+from agents.nodes.web_search import make_web_search_node
 from agents.runtime import AgentRuntime, build_default_runtime
-from agents.state import AgentState
+from agents.state import AgentState, MAX_WEB_SEARCH_ITERATIONS
+
+
+def select_reasoning_next_step(state: AgentState) -> str:
+    if (
+        state.get("web_search_query")
+        and state.get("web_search_iterations", 0) < MAX_WEB_SEARCH_ITERATIONS
+    ):
+        return "web_search"
+    return "end"
 
 
 def build_graph(runtime: AgentRuntime):
@@ -28,6 +38,7 @@ def build_graph(runtime: AgentRuntime):
     graph.add_node("merge_deduplicate", make_merge_deduplicate_node(runtime))
     graph.add_node("rerank", make_rerank_node(runtime))
     graph.add_node("reason", make_reason_node(runtime))
+    graph.add_node("web_search", make_web_search_node(runtime))
 
     graph.add_edge(START, "normalize_input")
     graph.add_edge("normalize_input", "router")
@@ -46,7 +57,12 @@ def build_graph(runtime: AgentRuntime):
     graph.add_edge("expand_query", "merge_deduplicate")
     graph.add_edge("merge_deduplicate", "rerank")
     graph.add_edge("rerank", "reason")
-    graph.add_edge("reason", END)
+    graph.add_conditional_edges(
+        "reason",
+        select_reasoning_next_step,
+        {"web_search": "web_search", "end": END},
+    )
+    graph.add_edge("web_search", "reason")
 
     return graph.compile()
 

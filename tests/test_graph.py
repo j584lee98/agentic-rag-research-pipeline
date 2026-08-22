@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from agents.analysis import compute_retrieval_diagnostics
@@ -7,9 +8,12 @@ from agents.nodes.analysis import make_analysis_node
 from agents.nodes.expand_query import make_expand_query_node
 from agents.nodes.input import make_normalize_input_node
 from agents.nodes.merge_deduplicate import make_merge_deduplicate_node
+from agents.nodes.reasoning import make_reason_node
 from agents.nodes.rerank import make_rerank_node
 from agents.nodes.retrieval import make_retrieval_node
+from agents.nodes.web_search import make_web_search_node
 from agents.runtime import AgentRuntime
+from agents.state import MAX_WEB_SEARCH_ITERATIONS
 
 
 class RetrievalDiagnosticsTests(unittest.TestCase):
@@ -90,6 +94,7 @@ class GraphTopologyTests(unittest.TestCase):
                 "merge_deduplicate",
                 "rerank",
                 "reason",
+                "web_search",
             }
             <= nodes
         )
@@ -103,10 +108,78 @@ class GraphTopologyTests(unittest.TestCase):
                 ("expand_query", "merge_deduplicate"),
                 ("merge_deduplicate", "rerank"),
                 ("rerank", "reason"),
+                ("reason", "web_search"),
                 ("reason", "__end__"),
+                ("web_search", "reason"),
             }
             <= edges
         )
+
+    def test_web_search_node_records_results_and_increments_iteration(self) -> None:
+        runtime = AgentRuntime(
+            model_name="test-model",
+            embedding_model="test-embedding",
+            vllm_base_url="http://vllm.test/v1",
+            rerank_model="test-reranker",
+            llm_factory=MagicMock(),
+            web_search=lambda query: f"result for {query}",
+        )
+
+        result = make_web_search_node(runtime)(
+            {
+                "prompt": "question",
+                "response": "",
+                "web_search_query": "latest research",
+                "web_search_iterations": 2,
+                "web_search_results": ["previous result"],
+            }
+        )
+
+        self.assertEqual(result["web_search_iterations"], MAX_WEB_SEARCH_ITERATIONS)
+        self.assertEqual(result["web_search_query"], "")
+        self.assertEqual(len(result["web_search_results"]), 2)
+        self.assertIn("latest research", result["web_search_results"][-1])
+
+
+class ReasoningWebSearchTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.llm = MagicMock()
+        self.bound_llm = MagicMock()
+        self.llm.bind_tools.return_value = self.bound_llm
+        self.runtime = AgentRuntime(
+            model_name="test-model",
+            embedding_model="test-embedding",
+            vllm_base_url="http://vllm.test/v1",
+            rerank_model="test-reranker",
+            llm_factory=lambda _: self.llm,
+        )
+
+    def test_reasoning_returns_web_search_request_from_tool_call(self) -> None:
+        self.bound_llm.return_value = SimpleNamespace(
+            content="",
+            tool_calls=[{"name": "web_search", "args": {"query": "current findings"}}],
+        )
+
+        result = make_reason_node(self.runtime)({"prompt": "question", "response": ""})
+
+        self.assertEqual(
+            result, {"response": "", "web_search_query": "current findings"}
+        )
+        self.llm.bind_tools.assert_called_once()
+
+    def test_reasoning_disables_tool_calls_after_three_searches(self) -> None:
+        self.llm.return_value = SimpleNamespace(content="final answer", tool_calls=[])
+
+        result = make_reason_node(self.runtime)(
+            {
+                "prompt": "question",
+                "response": "",
+                "web_search_iterations": MAX_WEB_SEARCH_ITERATIONS,
+            }
+        )
+
+        self.assertEqual(result, {"response": "final answer", "web_search_query": ""})
+        self.llm.bind_tools.assert_not_called()
 
 
 class QueryExpansionTests(unittest.TestCase):

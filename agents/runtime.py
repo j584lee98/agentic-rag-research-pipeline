@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from langchain_openai import ChatOpenAI
 
 from app.config import get_settings
+from agents.web_search import search_web
 
 
 @dataclass(frozen=True)
@@ -13,6 +14,7 @@ class AgentRuntime:
     vllm_base_url: str
     rerank_model: str
     llm_factory: Callable[[str], ChatOpenAI]
+    web_search: Callable[[str], str] = search_web
 
 
 def build_default_runtime() -> AgentRuntime:
@@ -23,4 +25,5 @@ def build_default_runtime() -> AgentRuntime:
         vllm_base_url=settings.vllm_base_url,
         rerank_model=settings.vllm_rerank_model,
         llm_factory=ChatOpenAI,
+        web_search=search_web,
     )

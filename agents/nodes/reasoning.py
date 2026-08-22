@@ -1,12 +1,14 @@
 import logging
 
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.tools import tool
 
 from agents.runtime import AgentRuntime
 from agents.state import (
     AgentState,
     AgentStateUpdate,
     EMPTY_PROMPT_RESPONSE,
+    MAX_WEB_SEARCH_ITERATIONS,
     MODEL_FAILURE_RESPONSE,
     NO_RETRIEVED_CONTEXT,
     RetrievalDiagnostics,
@@ -25,16 +27,24 @@ PROMPT_TEMPLATE = ChatPromptTemplate.from_messages(
             "user question. Use the diagnostics to judge whether the retrieved "
             "context provides enough information to answer confidently. "
             "If coverage is 'insufficient' or 'partial', say so explicitly and "
-            "supplement with your own knowledge where appropriate.",
+            "supplement with your own knowledge where appropriate. You may call "
+            "web_search when current or missing information requires verification. "
+            "When web-search results are provided, use them to produce a final "
+            "answer with source URLs.",
         ),
         (
             "human",
             "Question:\n{question}\n\n"
             "{diagnostics_summary}\n\n"
-            "Retrieved context:\n{context}\n\nAnswer:",
+            "Retrieved context:\n{context}\n\n"
+            "Web-search results:\n{web_search_results}\n\nAnswer:",
         ),
     ]
 )
+
+
+def format_web_search_results(results: list[str]) -> str:
+    return "\n\n".join(results) if results else "No web-search results yet."
 
 
 def format_diagnostics(diagnostics: RetrievalDiagnostics | None) -> str:
@@ -64,15 +74,21 @@ def format_document_chunks(document_chunks: list[str]) -> str:
 
 
 def make_reason_node(runtime: AgentRuntime):
+    @tool
+    def web_search(query: str) -> str:
+        """Search the public web for current or missing information."""
+        return "Search request submitted."
+
     def reason_node(state: AgentState) -> AgentStateUpdate:
         prompt = state["prompt"].strip()
         if not prompt:
             return {"prompt": "", "response": EMPTY_PROMPT_RESPONSE}
 
         try:
-            response = (
-                PROMPT_TEMPLATE | runtime.llm_factory(runtime.model_name)
-            ).invoke(
+            llm = runtime.llm_factory(runtime.model_name)
+            if state.get("web_search_iterations", 0) < MAX_WEB_SEARCH_ITERATIONS:
+                llm = llm.bind_tools([web_search])
+            response = (PROMPT_TEMPLATE | llm).invoke(
                 {
                     "question": prompt,
                     "context": format_document_chunks(
@@ -81,12 +97,22 @@ def make_reason_node(runtime: AgentRuntime):
                     "diagnostics_summary": format_diagnostics(
                         state.get("retrieval_diagnostics")
                     ),
+                    "web_search_results": format_web_search_results(
+                        state.get("web_search_results", [])
+                    ),
                 }
             )
         except Exception:
             logger.exception("Reasoning model invocation failed.")
             return {"response": MODEL_FAILURE_RESPONSE}
 
-        return {"response": str(response.content)}
+        tool_calls = getattr(response, "tool_calls", [])
+        for tool_call in tool_calls:
+            if tool_call.get("name") == "web_search":
+                query = tool_call.get("args", {}).get("query", "").strip()
+                if query:
+                    return {"response": "", "web_search_query": query}
+
+        return {"response": str(response.content), "web_search_query": ""}
 
     return reason_node

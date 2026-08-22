@@ -28,11 +28,14 @@ This project contains:
 The router chooses either `direct` -> `END` or `retrieval` -> `analysis`.
 Analysis computes deterministic score statistics, then asks an LLM for a
 structured `pass` or `fail` assessment using the prompt, retrieved context, and
-statistics. `pass` continues to `rerank` -> `reason` -> `END`; `fail` expands
-the query, retrieves additional chunks, merges and deduplicates them, then
-reranks the candidates. The vLLM reranker selects the five highest-ranked chunks
-for reasoning. Nodes return only the state fields they update, allowing future
-branches to add state without overwriting unrelated values.
+statistics. `pass` continues to `rerank` -> `reason`; `fail` expands the query,
+retrieves additional chunks, merges and deduplicates them, then reranks the
+candidates. The vLLM reranker selects the five highest-ranked chunks
+for reasoning. The reasoning node can call a Tavily-backed `web_search` node,
+then return to reasoning with the result. This ReAct loop is capped at three web
+searches before the model must produce its final response. Nodes return only the
+state fields they update, allowing future branches to add state without
+overwriting unrelated values.
 
 ### Environment variables
 
@@ -40,6 +43,12 @@ Set your OpenAI API key before invoking the agent:
 
 ```bash
 set OPENAI_API_KEY=your_api_key_here
+```
+
+To enable web search, configure a Tavily API key:
+
+```bash
+set TAVILY_API_KEY=your_api_key_here
 ```
 
 Optional model override:
